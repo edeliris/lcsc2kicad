@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
 import shutil
 import sys
@@ -269,14 +270,14 @@ def fetch_components(ids: list[str], delay: float, retries: int, backoff: float)
                 break
             print(f"[WAIT] {cid} 第 {attempt}/{retries} 次失败（403/网络），{backoff:.0f}s 后重试")
             if attempt < retries:
-                time.sleep(backoff)
+                time.sleep(backoff * random.uniform(0.8, 1.2))
         if not cad:
             comps.append(dict(name=cid, lcsc=cid, pins=[], source=f"fetch:{cid}",
                               error="拉取失败（限流或元件不存在）"))
         else:
             comps.append(component_from_cad(cad, EasyedaSymbolImporter, source=f"fetch:{cid}"))
         if idx < len(ids) - 1:
-            time.sleep(delay)
+            time.sleep(delay * random.uniform(0.8, 1.2))
     return comps
 
 

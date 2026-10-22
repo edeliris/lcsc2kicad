@@ -42,6 +42,8 @@ cd lcsc2kicad-skill
 
 # 3. 转换（料号可省略 C 前缀；--manifest 记录结果、支持断点续跑）
 python scripts/build_kicad_lib.py --lcsc-id 5187527 --output ./myproj --manifest parts.json
+#   也可以直接从 BOM 读（CSV/TXT/XLSX；扫描全表、去重、自动过滤 C0402 等封装代号）
+python scripts/build_kicad_lib.py --bom bom.xlsx --output ./myproj --manifest parts.json
 
 # 4. 引脚名按嘉立创原始数据（name.is_displayed）对齐
 python scripts/fix_symbol_pin_names.py ./myproj.kicad_sym --fetch C5187527
@@ -87,7 +89,7 @@ flowchart LR
 
 | 脚本 / 命令 | 做什么 |
 |---|---|
-| `build_kicad_lib.py` / `build` | 批量下载并转成 KiCad 库；403 限流退避 + 工程清单（断点续跑）+ 日志；料号可省略 `C` 前缀 |
+| `build_kicad_lib.py` / `build` | 批量下载并转成 KiCad 库；403 限流退避 + 工程清单（断点续跑）+ 日志；料号可省略 `C` 前缀；支持 BOM（CSV/XLSX）、弱网模式、文件级更新模式 |
 | `fix_symbol_pin_names.py` / `pins` | 用 EasyEDA 逐引脚 `name.is_displayed` 真值修"引脚名压编号"；顺手去 UTF-8 BOM |
 | `fix_model_paths.py` / `models` | 把封装里的 3D 绝对路径改写成 `${KIPRJMOD}/...`，项目可搬走 |
 | `import_to_kicad.py` / `register` | 项目本地（`${KIPRJMOD}`）或全局注册，自动备份 + 读回校验 + 幂等 + 可卸载 |

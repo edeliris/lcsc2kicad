@@ -3,7 +3,7 @@ name: lcsc2kicad
 description: >-
   立创商城（LCSC）/ 嘉立创EDA（EasyEDA）元件库 → KiCad 完整工作流：
   下载符号+封装+3D → 对齐引脚名 → 3D 路径变量化 → 注册进库表 → 用 kicad-cli 验证 →（可选）补封装元数据。
-  含限流 403、中文控制台 GBK、UTF-8 BOM、逐引脚 name.is_displayed、工程清单、项目本地注册等实测坑。
+  含限流 403、中文控制台 GBK、UTF-8 BOM、逐引脚 name.is_displayed、BOM 导入、工程清单、项目本地注册等实测坑。
   触发词："立创元件转KiCad"、"LCSC 元件库"、"easyeda2kicad"、"立创EDA 导入 KiCad"、
   "把立创料号做成 KiCad 库"、"lcsc2kicad"、"C2040 转 KiCad"。
   也适用于：按立创料号（C 开头）批量建 KiCad 库、给 KiCad 项目补上 LCSC 元件。
@@ -11,7 +11,7 @@ license: MIT
 compatibility: Windows / macOS / Linux；Python 3.9+；KiCad 6.0+（本工作流在 KiCad 10.0.6 实测通过）；需联网访问 easyeda.com API
 metadata:
   author: TP
-  version: "1.3.0"
+  version: "1.4.0"
   openclaw:
     requires:
       bins:
@@ -64,9 +64,21 @@ python scripts/build_kicad_lib.py --ids-file my_parts.txt --output ./kicad/mypro
 python scripts/build_kicad_lib.py --manifest parts.json --output ./kicad/myproj
 python scripts/build_kicad_lib.py --manifest parts.json --output ./kicad/myproj --retry-all
 
+# 工程清单 + 文件级更新模式：只补缺失/变化（按记录的文件哈希）
+python scripts/build_kicad_lib.py --manifest parts.json --output ./kicad/myproj --update-mode
+
+# BOM 直接读（CSV/TXT/XLSX；扫描全表、去重、过滤 C0402/C0603 等封装代号）
+python scripts/build_kicad_lib.py --bom bom.xlsx --output ./kicad/myproj
+
+# 弱网：间隔/退避翻倍、重试 +2、等待 ±20% 抖动
+python scripts/build_kicad_lib.py --ids-file my_parts.txt --output ./kicad/myproj --weak-network
+
 # 只补失败的那几个 / 日志落盘
 python scripts/build_kicad_lib.py --lcsc-id C2128 C434967 --output ./kicad/myproj --log build.log
 ```
+
+> BOM 解析：`.csv/.txt/.tsv` 用 UTF-8/GBK 扫描；`.xlsx` 需要 `pip install openpyxl`；
+> 旧版 `.xls` 请另存为 `.xlsx`。`--bom` 会自动忽略封装代号（C0402 等），不会当料号转。
 
 `--output` 是**库基名**，不是目录。产出三件套：
 
@@ -116,6 +128,15 @@ python scripts/fix_symbol_pin_names.py kicad/myproj.kicad_sym --show B1205S-3WR3
 ---
 
 ## 3. 注册 — `scripts/import_to_kicad.py`
+
+### 3.0 工程根判定（Agent 手做，不写脚本）
+
+1. 从库路径向上找含 `.kicad_pro` 的目录 → 它就是工程根；找不到再问用户。
+2. 找到 → 用 `--project-local <工程根>`，条目会写成 `${KIPRJMOD}/…`。
+3. 找不到、或用户不让改库表 → **不要动任何库表**；在库旁边生成 `KiCad_IMPORT.md`：
+   写清符号库/封装库里有什么，附可直接粘贴的 `sym-lib-table` / `fp-lib-table` 两行，
+   以及 KiCad 菜单步骤（Preferences → Manage Libraries → Add Existing）。
+4. 只有用户明确要求"全局注册"时，才走下面的全局流程（先备份、读回校验）。
 
 **首选：项目本地注册**——只改项目自己的两张库表，用 `${KIPRJMOD}` 相对路径，
 不动全局配置、不写环境变量，项目可搬走/可提交：
@@ -205,7 +226,7 @@ python scripts/verify_library.py --lib-basename "$base"
 
 | 脚本 | 作用 | 关键参数 | 产物 |
 |---|---|---|---|
-| `build_kicad_lib.py` | 下载并转 KiCad 库 | `--lcsc-id` / `--ids-file` / `--manifest` / `--retry-all` / `--output` / `--delay --retries --backoff` / `--log` | `.kicad_sym` + `.pretty/` + `.3dshapes/` + 清单 |
+| `build_kicad_lib.py` | 下载并转 KiCad 库 | `--lcsc-id` / `--ids-file` / `--bom` / `--manifest` / `--retry-all` / `--update-mode` / `--weak-network` / `--output` / `--delay --retries --backoff` / `--log` | `.kicad_sym` + `.pretty/` + `.3dshapes/` + 清单 |
 | `fix_symbol_pin_names.py` | 引脚名对齐、去 BOM | `--fetch` / `--easyeda-json` / `--per-pin` / `--mode` / `--report` / `--log` | 原地改写 `.kicad_sym`（自动备份） |
 | `fix_model_paths.py` | 3D 路径变量化 | `--lib-basename` / `--base` / `--variable` / `--dry-run` | 原地改写 `.kicad_mod` |
 | `import_to_kicad.py` | 注册库表 | `--lib-basename` / `--nickname` / `--project-local` / `--dry-run` / `--remove` / `--log` | 项目或全局库表 |
@@ -265,6 +286,7 @@ python scripts/verify_library.py --lib-basename "$base"
 | KiCad 格式事实（2026-10-21） | 逐引脚 `(hide yes)` 无效；`"~"` 显示字面；`""` 不显示；UTF-8 BOM 使库无法加载 |
 | 封装元数据/改名（2026-10-22） | CH334F：补 `descr`/`tags`/`Datasheet`/`Description` + 改名，`fp upgrade --force` exit=0，元数据被保留 |
 | v1.3 新能力（2026-10-22） | 料号补 `C` 前缀、`--manifest` 断点续跑、`--log`、3D 路径变量化、`pip install`/`pipx` 入口；CH334F 全流程实测通过 |
+| v1.4 新能力（2026-10-22） | `--bom`（CSV/XLSX 全表扫描、过滤 C0402 等假料号）、`--weak-network`（翻倍+抖动）、`--update-mode`（清单文件哈希）；C5187527 实测：BOM 提取 1 个、更新模式跳过/删文件后重转均正确 |
 
 ---
 

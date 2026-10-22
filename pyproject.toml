@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lcsc2kicad"
-version = "1.3.0"
+version = "1.4.0"
 description = "LCSC/EasyEDA 元件 → KiCad 符号+封装+3D：Agent Skill + 命令行工具"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,6 +21,7 @@ dependencies = []
 
 [project.optional-dependencies]
 easyeda = ["easyeda2kicad>=1.0.1"]
+bom = ["openpyxl>=3.0"]
 
 [project.urls]
 Homepage = "https://github.com/edeliris/lcsc2kicad-skill"
