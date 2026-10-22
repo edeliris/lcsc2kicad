@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# easyeda2kicad / 本工作流运行产物
+.easyeda_cache/
+
+# 库文件（本仓库只发布工具，不发布生成的元件库）
+*.kicad_sym
+*.pretty/
+*.3dshapes/
+*.kicad_mod
+
+# 备份与临时文件
+_backup_*/
+*.bak_*
+*.tmp
+.tmp/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
