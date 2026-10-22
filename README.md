@@ -28,6 +28,10 @@ myproj.3dshapes/       3D 模型（*.step + *.wrl）
 
 ## 快速开始
 
+直接把这个repo链接给你的AI Agent，让它自己来安装。
+
+手动安装如下：
+
 ```bash
 # 1. 依赖
 pip install easyeda2kicad
