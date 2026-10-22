@@ -32,7 +32,7 @@ myproj.3dshapes/       3D 模型（*.step + *.wrl）
 pip install easyeda2kicad
 
 # 2. 下载本仓库
-git clone https://github.com/<你的账号>/lcsc2kicad.git
+git clone https://github.com/edeliris/lcsc2kicad.git
 cd lcsc2kicad
 
 # 3. 转换（限流自动退避；--output 是库基名）
@@ -92,7 +92,7 @@ flowchart LR
 
 ```bash
 # 通用 agent skills 目录（按你的工具约定调整）
-git clone https://github.com/<你的账号>/lcsc2kicad.git ~/.agents/skills/lcsc2kicad
+git clone https://github.com/edeliris/lcsc2kicad.git ~/.agents/skills/lcsc2kicad
 # Claude Code:  ~/.claude/skills/lcsc2kicad
 ```
 
