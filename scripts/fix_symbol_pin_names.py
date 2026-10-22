@@ -65,6 +65,46 @@ RE_DATASHEET = re.compile(r'\(property\s+"Datasheet"\s+"((?:[^"\\]|\\.)*)"')
 RE_LCSC = re.compile(r"(C\d{3,})")
 
 
+def normalize_lcsc_id(raw: str) -> str:
+    """`5187527` / `c5187527` / `C5187527` → `C5187527`；认不出来就原样返回。"""
+    s = raw.strip().upper()
+    if s.startswith("C"):
+        s = s[1:]
+    return f"C{s}" if re.fullmatch(r"\d{3,}", s) else raw.strip()
+
+
+class _Tee:
+    """把输出同时写到控制台和日志文件。"""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+            except Exception:  # noqa: BLE001
+                pass
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def setup_log(path: str | None) -> None:
+    if not path:
+        return
+    import atexit
+
+    logf = open(Path(path).expanduser(), "a", encoding="utf-8", newline="")
+    sys.stdout = _Tee(sys.__stdout__, logf)  # type: ignore[assignment]
+    atexit.register(logf.close)
+
+
 # --------------------------------------------------------------------------
 # S 表达式扫描
 # --------------------------------------------------------------------------
@@ -219,6 +259,7 @@ def fetch_components(ids: list[str], delay: float, retries: int, backoff: float)
     except ImportError as e:  # pragma: no cover
         raise SystemExit(f"[FAIL] 需要 easyeda2kicad：{e}") from e
     api = EasyedaApi(use_cache=True)  # 缓存目录：CWD/.easyeda_cache
+    ids = [normalize_lcsc_id(x) for x in ids]
     comps: list[dict] = []
     for idx, cid in enumerate(ids):
         cad: dict = {}
@@ -357,7 +398,9 @@ def main() -> int:
     ap.add_argument("--report", metavar="JSON", help="把每个符号的决定写成 JSON 报告")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-backup", action="store_true")
+    ap.add_argument("--log", default=None, help="把输出追加写入日志文件")
     args = ap.parse_args()
+    setup_log(args.log)
 
     p = Path(args.lib)
     if not p.is_file():
@@ -484,6 +527,11 @@ def main() -> int:
     print(f"已写入: 改 {changed} 处；pin_names={n_pn}（hide={n_hide}）；空名字={n_empty}；"
           f"括号平衡={'OK' if ok_brace else 'FAIL'}")
     return 0 if ok_brace else 1
+
+
+def cli() -> None:
+    """pip 安装后的控制台入口（lcsc2kicad-pins）。"""
+    raise SystemExit(main())
 
 
 if __name__ == "__main__":

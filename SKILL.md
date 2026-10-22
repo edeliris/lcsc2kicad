@@ -2,8 +2,8 @@
 name: lcsc2kicad
 description: >-
   立创商城（LCSC）/ 嘉立创EDA（EasyEDA）元件库 → KiCad 完整工作流：
-  下载符号+封装+3D → 对齐引脚名 → 注册进库表 → 用 kicad-cli 验证 →（可选）补封装元数据。
-  含限流 403、中文控制台 GBK、UTF-8 BOM、逐引脚 name.is_displayed、项目本地注册等实测坑。
+  下载符号+封装+3D → 对齐引脚名 → 3D 路径变量化 → 注册进库表 → 用 kicad-cli 验证 →（可选）补封装元数据。
+  含限流 403、中文控制台 GBK、UTF-8 BOM、逐引脚 name.is_displayed、工程清单、项目本地注册等实测坑。
   触发词："立创元件转KiCad"、"LCSC 元件库"、"easyeda2kicad"、"立创EDA 导入 KiCad"、
   "把立创料号做成 KiCad 库"、"lcsc2kicad"、"C2040 转 KiCad"。
   也适用于：按立创料号（C 开头）批量建 KiCad 库、给 KiCad 项目补上 LCSC 元件。
@@ -11,7 +11,7 @@ license: MIT
 compatibility: Windows / macOS / Linux；Python 3.9+；KiCad 6.0+（本工作流在 KiCad 10.0.6 实测通过）；需联网访问 easyeda.com API
 metadata:
   author: TP
-  version: "1.2.0"
+  version: "1.3.0"
   openclaw:
     requires:
       bins:
@@ -25,8 +25,8 @@ metadata:
 
 把**立创料号（C 开头）**变成 KiCad 里可用的**符号 + 封装 + 3D 模型**，注册进库表，并用 KiCad 自己的解析器验证。
 
-**管道**：① 转换 → ② 引脚名对齐 → ③ 注册 → ④ 验证 → ⑤（可选）封装元数据。
-①③ 必需；②④ 强烈建议；⑤ 按需。每步一个脚本，互不依赖内部实现。
+**管道**：① 转换 → ② 引脚名对齐 → ③ 3D 路径相对化 → ④ 注册 → ⑤ 验证；另可选封装元数据。
+①④ 必需；②③⑤ 推荐。每步一个脚本，也可用统一入口 `lcsc2kicad <build|pins|models|register|verify>`。
 
 ---
 
@@ -42,23 +42,30 @@ metadata:
 
 > **安装位置坑**：pip 可能装到 `%APPDATA%\Python\PythonXY\Scripts`（不在 PATH）
 > ⇒ 一律用 `python -m easyeda2kicad` 调用，别指望 `easyeda2kicad` 命令（detail: pitfalls §十）。
+>
+> 也可直接安装成命令：`pipx install "lcsc2kicad[easyeda] @ git+https://github.com/edeliris/lcsc2kicad-skill.git"`，
+> 之后用 `lcsc2kicad <命令>`（见 §7）；不装也能直接 `python scripts/<脚本>.py`。
 
 ---
 
 ## 1. 转换 — `scripts/build_kicad_lib.py`
 
 ```bash
-# 单个 / 几个
+# 单个 / 几个（料号可省略 C 前缀：5187527 会自动补成 C5187527）
 python scripts/build_kicad_lib.py --lcsc-id C2040 --output ./kicad/myproj
 
 # 批量（推荐：自带间隔与退避重试）
 python scripts/build_kicad_lib.py --lcsc-id C17513 C17414 C17514 --output ./kicad/myproj
 
-# 从文件读料号（每行一个，# 开头为注释）
+# 从文件读料号（每行一个；# 开头为注释；行尾可写备注）
 python scripts/build_kicad_lib.py --ids-file my_parts.txt --output ./kicad/myproj
 
-# 只补失败的那几个
-python scripts/build_kicad_lib.py --lcsc-id C2128 C434967 --output ./kicad/myproj
+# 工程清单：记录备注与结果，已成功的自动跳过（断点续跑）
+python scripts/build_kicad_lib.py --manifest parts.json --output ./kicad/myproj
+python scripts/build_kicad_lib.py --manifest parts.json --output ./kicad/myproj --retry-all
+
+# 只补失败的那几个 / 日志落盘
+python scripts/build_kicad_lib.py --lcsc-id C2128 C434967 --output ./kicad/myproj --log build.log
 ```
 
 `--output` 是**库基名**，不是目录。产出三件套：
@@ -136,6 +143,20 @@ python scripts/import_to_kicad.py --nickname myproj --project-local ./myproject 
 > 三个坑：权限（写不进去却"假装成功"）、KiCad 运行中被覆盖、`kicad_common.json` 结构写错静默失效
 > ⇒ pitfalls §五、§六、§十一。
 
+### 3.1 3D 模型路径相对化（推荐，注册前后都行）
+
+`easyeda2kicad` 会把 `(model ...)` 写成**绝对路径**，换机器/换目录 3D 预览就丢了。
+注册前顺手把模型路径改成 `${KIPRJMOD}` 相对路径，库跟着项目走：
+
+```bash
+python scripts/fix_model_paths.py --lib-basename ./myproject/kicad/myproj --base ./myproject --dry-run
+python scripts/fix_model_paths.py --lib-basename ./myproject/kicad/myproj --base ./myproject
+# 全局 3D 目录：--base "<3dmodels 根>" --variable KICAD10_3DMODEL_DIR
+```
+
+只改 `.pretty/*.kicad_mod` 里的 `(model ...)`；已是变量或相对路径的跳过；可重复运行。
+实测 `kicad-cli fp upgrade --force` 接受 `${KIPRJMOD}` 形式的模型路径。
+
 ---
 
 ## 4. 验证 — `scripts/verify_library.py`
@@ -169,11 +190,14 @@ python scripts/verify_library.py --lib-basename ./kicad/myproj --kicad-cli "<KiC
 
 ```bash
 base=./kicad/myproj
-python scripts/build_kicad_lib.py --ids-file my_parts.txt --output "$base"
+python scripts/build_kicad_lib.py --ids-file my_parts.txt --output "$base" --manifest parts.json --log build.log
 python scripts/fix_symbol_pin_names.py "$base.kicad_sym" --fetch C2040 C2128
+python scripts/fix_model_paths.py --lib-basename "$base" --base ./myproject
 python scripts/import_to_kicad.py --lib-basename "$base" --project-local ./myproject
 python scripts/verify_library.py --lib-basename "$base"
 ```
+
+装了包之后也可一条命令分步跑：`lcsc2kicad build|pins|models|register|verify …`。
 
 ---
 
@@ -181,10 +205,12 @@ python scripts/verify_library.py --lib-basename "$base"
 
 | 脚本 | 作用 | 关键参数 | 产物 |
 |---|---|---|---|
-| `build_kicad_lib.py` | 下载并转 KiCad 库 | `--lcsc-id` / `--ids-file` / `--output` / `--delay --retries --backoff` | `.kicad_sym` + `.pretty/` + `.3dshapes/` |
-| `fix_symbol_pin_names.py` | 引脚名对齐、去 BOM | `--fetch` / `--easyeda-json` / `--per-pin` / `--mode` / `--report` | 原地改写 `.kicad_sym`（自动备份） |
-| `import_to_kicad.py` | 注册库表 | `--lib-basename` / `--nickname` / `--project-local` / `--dry-run` / `--remove` | 项目或全局库表 |
-| `verify_library.py` | 验证可解析 | `--lib-basename` / `--kicad-cli` / `--skip-cli` | 报告 + exit code |
+| `build_kicad_lib.py` | 下载并转 KiCad 库 | `--lcsc-id` / `--ids-file` / `--manifest` / `--retry-all` / `--output` / `--delay --retries --backoff` / `--log` | `.kicad_sym` + `.pretty/` + `.3dshapes/` + 清单 |
+| `fix_symbol_pin_names.py` | 引脚名对齐、去 BOM | `--fetch` / `--easyeda-json` / `--per-pin` / `--mode` / `--report` / `--log` | 原地改写 `.kicad_sym`（自动备份） |
+| `fix_model_paths.py` | 3D 路径变量化 | `--lib-basename` / `--base` / `--variable` / `--dry-run` | 原地改写 `.kicad_mod` |
+| `import_to_kicad.py` | 注册库表 | `--lib-basename` / `--nickname` / `--project-local` / `--dry-run` / `--remove` / `--log` | 项目或全局库表 |
+| `verify_library.py` | 验证可解析 | `--lib-basename` / `--kicad-cli` / `--skip-cli` / `--log` | 报告 + exit code |
+| `lcsc2kicad.py` | 统一入口 | `build|pins|models|register|verify` | — |
 
 ---
 
@@ -194,6 +220,8 @@ python scripts/verify_library.py --lib-basename "$base"
 - [ ] `verify_library.py` 全部通过（sym/fp 均 exit=0）
 - [ ] 符号库 UTF-8 无 BOM；引脚名与嘉立创一致
 - [ ] 库表条目读回正确（`--dry-run` 可复核）
+- [ ] 3D 模型路径已是变量/相对路径（`fix_model_paths.py`），换机器不丢模型
+- [ ] 工程清单（`parts.json`）记录了成功/失败（可选）
 
 **上板前人工核对**
 - [ ] 封装尺寸、引脚间距**对照数据手册**
@@ -236,6 +264,7 @@ python scripts/verify_library.py --lib-basename "$base"
 | 项目本地注册（2026-10-22） | dry-run → 写入 `${KIPRJMOD}/…` → 读回 OK → 幂等 skip → `--remove` 干净 |
 | KiCad 格式事实（2026-10-21） | 逐引脚 `(hide yes)` 无效；`"~"` 显示字面；`""` 不显示；UTF-8 BOM 使库无法加载 |
 | 封装元数据/改名（2026-10-22） | CH334F：补 `descr`/`tags`/`Datasheet`/`Description` + 改名，`fp upgrade --force` exit=0，元数据被保留 |
+| v1.3 新能力（2026-10-22） | 料号补 `C` 前缀、`--manifest` 断点续跑、`--log`、3D 路径变量化、`pip install`/`pipx` 入口；CH334F 全流程实测通过 |
 
 ---
 
@@ -243,7 +272,7 @@ python scripts/verify_library.py --lib-basename "$base"
 
 | 文件 | 内容 |
 |---|---|
-| `references/pitfalls.md` | 17 条实测踩坑 + 17 个料号附录（现象 → 原因 → 处理） |
+| `references/pitfalls.md` | 18 条实测踩坑 + 17 个料号附录（现象 → 原因 → 处理） |
 | `references/easyeda-kicad-mapping.md` | 单位/图层/焊盘/3D 映射表、KiCad 格式实测事实、LCKiConverter 抄/不抄 |
 | `references/sample-lcsc-ids.md` | 回归测试用 17 个料号（可直接当 `--ids-file`） |
 

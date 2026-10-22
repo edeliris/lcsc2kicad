@@ -17,6 +17,8 @@ _backup_*/
 *.bak_*
 *.tmp
 .tmp/
+pip-*/
+*.egg-info/
 
 # 编辑器 / 系统
 .vscode/

@@ -4,7 +4,8 @@
 > 每条按**现象 → 原因 → 处理**记录；同一问题第二次出现就固化到这里。
 > 快速索引：一 限流｜二 GBK｜三 同名封装｜四 3D 缺失｜五 权限｜六 KiCad 运行中｜七 kicad-cli｜
 > 八 fp upgrade｜九 模块类｜十 PATH｜十一 环境变量结构｜十二 引脚名重叠｜十三 UTF-8 BOM｜
-> 十四 逐引脚真值｜十五 项目本地注册｜十六 LCKiConverter｜十七 封装命名/元数据｜附录 A 料号表
+> 十四 逐引脚真值｜十五 项目本地注册｜十六 LCKiConverter｜十七 封装命名/元数据｜
+> 十八 3D 绝对路径｜附录 A 料号表
 
 ---
 
@@ -354,6 +355,20 @@ python scripts/import_to_kicad.py --nickname myproj --project-local ./myproject 
 A+B 均已落地 —— `descr`/`tags`/`Datasheet`/`Description` 填好，封装名改
 `CH334F_C5187527_QFN-24_L4.0-W4.0-P0.50-BL-EP2.8`，符号 Footprint 字段同步；
 `kicad-cli fp upgrade --force` exit=0，元数据全部被 KiCad 解析保留。
+
+---
+
+## 十八、3D 模型写成绝对路径：换机器/换目录 3D 就丢
+
+**现象**：`(model "C:/Users/…/xxx.3dshapes/part.wrl")`，换一台机器、或把项目挪个目录后，
+封装本身正常，但 3D 预览空白。
+**原因**：easyeda2kicad 把转换时的**绝对路径**写进封装；KiCad 不会自动去找 `.3dshapes` 邻居目录。
+**处理**
+1. `fix_model_paths.py --lib-basename <库基名> --base <项目根>` 把路径改成 `${KIPRJMOD}/…`
+   （全局 3D 目录用 `--variable KICAD10_3DMODEL_DIR`）；可重复运行，已是变量的跳过。
+2. 手工兜底：封装属性 → 3D Models → 把模型路径改成变量形式。
+**实测（2026-10-22）**：CH334F 库改写后 `kicad-cli fp upgrade --force` exit=0；
+复跑输出"无需修改（已是路径变量…）"。
 
 ---
 

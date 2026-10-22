@@ -41,6 +41,38 @@ except Exception:  # pragma: no cover
     pass
 
 
+class _Tee:
+    """把输出同时写到控制台和日志文件。"""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+            except Exception:  # noqa: BLE001
+                pass
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def setup_log(path: str | None) -> None:
+    if not path:
+        return
+    import atexit
+
+    logf = open(Path(path).expanduser(), "a", encoding="utf-8", newline="")
+    sys.stdout = _Tee(sys.__stdout__, logf)  # type: ignore[assignment]
+    atexit.register(logf.close)
+
+
 def _windows_registry_kicad_dirs() -> list[Path]:
     """从 Windows 卸载注册表里读 KiCad 的 InstallLocation（最可靠的自动发现方式）。"""
     dirs: list[Path] = []
@@ -144,7 +176,9 @@ def main() -> int:
     ap.add_argument("--lib-basename", required=True, help="库基名（不带扩展名）")
     ap.add_argument("--kicad-cli", default=None, help="kicad-cli 路径（默认自动查找）")
     ap.add_argument("--skip-cli", action="store_true", help="跳过 kicad-cli 验证")
+    ap.add_argument("--log", default=None, help="把输出追加写入日志文件")
     args = ap.parse_args()
+    setup_log(args.log)
 
     base = Path(args.lib_basename).resolve()
     sym = base.with_suffix(".kicad_sym")
@@ -234,6 +268,11 @@ def main() -> int:
 
     print("\n" + ("全部通过 ✓" if rc == 0 else "存在问题 ✗（见上）"))
     return rc
+
+
+def cli() -> None:
+    """pip 安装后的控制台入口（lcsc2kicad-verify）。"""
+    raise SystemExit(main())
 
 
 if __name__ == "__main__":

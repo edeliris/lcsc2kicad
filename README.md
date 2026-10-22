@@ -9,6 +9,7 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB.svg)
 ![KiCad](https://img.shields.io/badge/KiCad-10.0.6%20tested-1a6b3c.svg)
+![Release](https://img.shields.io/github/v/release/edeliris/lcsc2kicad-skill)
 ![Agent Skill](https://img.shields.io/badge/Agent%20Skill-SKILL.md-8a2be2.svg)
 
 </div>
@@ -32,45 +33,61 @@ myproj.3dshapes/       3D 模型（*.step + *.wrl）
 pip install easyeda2kicad
 
 # 2. 下载本仓库
-git clone https://github.com/edeliris/lcsc2kicad.git
-cd lcsc2kicad
+git clone https://github.com/edeliris/lcsc2kicad-skill.git
+cd lcsc2kicad-skill
 
-# 3. 转换（限流自动退避；--output 是库基名）
-python scripts/build_kicad_lib.py --lcsc-id C5187527 --output ./myproj
+# 3. 转换（料号可省略 C 前缀；--manifest 记录结果、支持断点续跑）
+python scripts/build_kicad_lib.py --lcsc-id 5187527 --output ./myproj --manifest parts.json
 
 # 4. 引脚名按嘉立创原始数据（name.is_displayed）对齐
 python scripts/fix_symbol_pin_names.py ./myproj.kicad_sym --fetch C5187527
 
-# 5. 注册进项目（只改项目自己的库表，不动全局配置）
+# 5. 3D 模型路径相对化（项目可搬走）
+python scripts/fix_model_paths.py --lib-basename ./myproj --base .
+
+# 6. 注册进项目（只改项目自己的库表，不动全局配置）
 python scripts/import_to_kicad.py --lib-basename ./myproj --project-local .
 
-# 6. 验证：用 KiCad 自己的解析器
+# 7. 验证：用 KiCad 自己的解析器
 python scripts/verify_library.py --lib-basename ./myproj
 ```
 
+也提供统一入口（等价）：`python scripts/lcsc2kicad.py build|pins|models|register|verify`。
+
 打开 KiCad → 原理图按 `A` → 搜库昵称 → 元件就在那里。
+
+**安装成命令（可选）**：
+
+```bash
+pipx install "lcsc2kicad[easyeda] @ git+https://github.com/edeliris/lcsc2kicad-skill.git"
+lcsc2kicad build --lcsc-id C5187527 --output ./myproj
+lcsc2kicad verify --lib-basename ./myproj
+```
 
 ## 工作原理
 
 ```mermaid
 flowchart LR
-    A["立创料号<br/>C5187527"] --> B["① build_kicad_lib.py<br/>下载 + 转换"]
-    B --> C["② fix_symbol_pin_names.py<br/>引脚名对齐"]
-    C --> D["③ import_to_kicad.py<br/>注册库表"]
-    D --> E["④ verify_library.py<br/>kicad-cli 验证"]
-    E --> F["KiCad 可用"]
-    B --> G[".kicad_sym / .pretty / .3dshapes"]
-    C --> G
+    A["立创料号<br/>C5187527"] --> B["① build<br/>下载 + 转换"]
+    B --> C["② pins<br/>引脚名对齐"]
+    C --> D["③ models<br/>3D 路径相对化"]
+    D --> E["④ register<br/>注册库表"]
+    E --> F["⑤ verify<br/>kicad-cli 验证"]
+    F --> G["KiCad 可用"]
+    B --> H[".kicad_sym / .pretty / .3dshapes"]
+    C --> H
+    D --> H
 ```
 
-四件事，四个脚本，互不强耦合：
+五个脚本，各管一段；也可以 `pip install` 后用一条 `lcsc2kicad <命令>` 调用：
 
-| 脚本 | 做什么 |
+| 脚本 / 命令 | 做什么 |
 |---|---|
-| `build_kicad_lib.py` | 批量下载并转成 KiCad 库；自带 403 限流退避、GBK 控制台保护、同名封装覆盖 |
-| `fix_symbol_pin_names.py` | 用 EasyEDA 逐引脚 `name.is_displayed` 真值修"引脚名压编号"；顺手去 UTF-8 BOM |
-| `import_to_kicad.py` | 项目本地（`${KIPRJMOD}`）或全局注册，自动备份 + 读回校验 + 幂等 + 可卸载 |
-| `verify_library.py` | 计数 / 括号平衡 / `sym upgrade` / `fp upgrade`，exit code 说真话 |
+| `build_kicad_lib.py` / `build` | 批量下载并转成 KiCad 库；403 限流退避 + 工程清单（断点续跑）+ 日志；料号可省略 `C` 前缀 |
+| `fix_symbol_pin_names.py` / `pins` | 用 EasyEDA 逐引脚 `name.is_displayed` 真值修"引脚名压编号"；顺手去 UTF-8 BOM |
+| `fix_model_paths.py` / `models` | 把封装里的 3D 绝对路径改写成 `${KIPRJMOD}/...`，项目可搬走 |
+| `import_to_kicad.py` / `register` | 项目本地（`${KIPRJMOD}`）或全局注册，自动备份 + 读回校验 + 幂等 + 可卸载 |
+| `verify_library.py` / `verify` | 计数 / 括号平衡 / `sym upgrade` / `fp upgrade`，exit code 说真话 |
 
 ## 已内置的坑
 
@@ -84,6 +101,7 @@ flowchart LR
 | 符号库带 UTF-8 BOM，KiCad 直接"无法加载库" | 读入 `utf-8-sig`、写回无 BOM |
 | 全局库表写入后"看起来成功"其实没写 | 每处写入都读回校验 |
 | 重装 KiCad / 迁移项目后库全丢 | 推荐项目本地注册，`${KIPRJMOD}` 相对路径，项目可搬走 |
+| 3D 模型写成绝对路径，换机器就不显示 | `fix_model_paths.py` 把路径改成 `${KIPRJMOD}/...`（或你指定的变量） |
 | `kicad-cli fp upgrade` 对当前格式库"无输出"被误判失败 | 用 `--force` 重写，或识别"已是当前格式" |
 
 ## 作为 Agent Skill 使用
@@ -92,8 +110,8 @@ flowchart LR
 
 ```bash
 # 通用 agent skills 目录（按你的工具约定调整）
-git clone https://github.com/edeliris/lcsc2kicad.git ~/.agents/skills/lcsc2kicad
-# Claude Code:  ~/.claude/skills/lcsc2kicad
+git clone https://github.com/edeliris/lcsc2kicad-skill.git ~/.agents/skills/lcsc2kicad-skill
+# Claude Code:  ~/.claude/skills/lcsc2kicad-skill
 ```
 
 之后直接说"把 C5187527 转成 KiCad 库"，Agent 会按 `SKILL.md` 的流水线执行。
@@ -102,17 +120,20 @@ git clone https://github.com/edeliris/lcsc2kicad.git ~/.agents/skills/lcsc2kicad
 ## 仓库结构
 
 ```
-lcsc2kicad/
+lcsc2kicad-skill/
 ├── SKILL.md                     # Agent 入口：流水线、命令、检查清单
-├── scripts/                     # 四个可独立运行的脚本
+├── scripts/                     # 五个可独立运行的脚本 + 统一入口
+│   ├── lcsc2kicad.py            # 统一入口（build/pins/models/register/verify）
 │   ├── build_kicad_lib.py
 │   ├── fix_symbol_pin_names.py
+│   ├── fix_model_paths.py
 │   ├── import_to_kicad.py
 │   └── verify_library.py
 ├── references/
-│   ├── pitfalls.md              # 17 条实测坑 + 附录 A（17 个料号）
+│   ├── pitfalls.md              # 18 条实测坑 + 附录 A（17 个料号）
 │   ├── easyeda-kicad-mapping.md # 单位/图层/焊盘/3D 映射 + KiCad 格式实测事实
 │   └── sample-lcsc-ids.md       # 示例料号表（可直接当 --ids-file）
+├── pyproject.toml               # pip / pipx 安装与命令入口
 ├── README.md
 ├── NOTICE.md                    # 第三方归属
 └── LICENSE                      # MIT
@@ -145,13 +166,14 @@ It exists because the naive `easyeda2kicad` flow breaks on real projects: API ra
 GBK console crashes, lost per-pin `name.is_displayed` flags, UTF-8 BOMs that KiCad refuses to load,
 and library tables that get silently overwritten.
 
-Four standalone scripts + a `SKILL.md` for AI agents (Claude Code / DSH / Codex compatible).
+Five standalone scripts + a dispatcher + a `SKILL.md` for AI agents (Claude Code / DSH / Codex compatible).
 MIT licensed. Tested with easyeda2kicad 1.0.1, KiCad 10.0.6, Python 3.13 on Windows.
 
 ```bash
 pip install easyeda2kicad
-python scripts/build_kicad_lib.py --lcsc-id C5187527 --output ./myproj
+python scripts/build_kicad_lib.py --lcsc-id C5187527 --output ./myproj --manifest parts.json
 python scripts/fix_symbol_pin_names.py ./myproj.kicad_sym --fetch C5187527
+python scripts/fix_model_paths.py --lib-basename ./myproj --base .
 python scripts/import_to_kicad.py --lib-basename ./myproj --project-local .
 python scripts/verify_library.py --lib-basename ./myproj
 ```

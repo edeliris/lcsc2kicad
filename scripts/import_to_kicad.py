@@ -67,6 +67,38 @@ except Exception:  # pragma: no cover
     pass
 
 
+class _Tee:
+    """把输出同时写到控制台和日志文件。"""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+            except Exception:  # noqa: BLE001
+                pass
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def setup_log(path: str | None) -> None:
+    if not path:
+        return
+    import atexit
+
+    logf = open(Path(path).expanduser(), "a", encoding="utf-8", newline="")
+    sys.stdout = _Tee(sys.__stdout__, logf)  # type: ignore[assignment]
+    atexit.register(logf.close)
+
+
 # --------------------------------------------------------------------------
 # 基础工具
 # --------------------------------------------------------------------------
@@ -318,7 +350,9 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="只显示将要做什么，不写文件")
     ap.add_argument("--remove", action="store_true", help="卸载该昵称的库与环境变量")
     ap.add_argument("--force", action="store_true", help="KiCad 正在运行时也强制写入")
+    ap.add_argument("--log", default=None, help="把输出追加写入日志文件")
     args = ap.parse_args()
+    setup_log(args.log)
 
     if args.project_local:
         return run_project_local(args)
@@ -422,6 +456,11 @@ def main() -> int:
         print("  1) 启动 KiCad → 原理图按 A → 搜昵称 → 应能看到元件")
         print(f"  2) 验证库可被 KiCad 解析：python verify_library.py --lib-basename \"{base}\"")
     return rc
+
+
+def cli() -> None:
+    """pip 安装后的控制台入口（lcsc2kicad-register）。"""
+    raise SystemExit(main())
 
 
 if __name__ == "__main__":
